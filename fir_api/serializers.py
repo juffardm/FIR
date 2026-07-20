@@ -20,10 +20,10 @@ from incidents.models import (
     Attribute,
     ValidAttribute,
     SeverityChoice,
+    Tlp,
     BaleCategory,
     IncidentStatus,
     get_initial_status,
-    CONFIDENTIALITY_LEVEL,
 )
 from fir_plugins.templatetags.markdown import render_markdown
 from fir.config.base import INSTALLED_APPS
@@ -100,7 +100,7 @@ class CommentsSerializer(serializers.ModelSerializer):
     def get_can_edit(self, obj):
         try:
             has_permission = Incident.authorization.for_user(
-                self._context["request"].user,
+                self.context["request"].user,
                 ["incidents.report_events", "incidents.handle_incidents"],
             ).get(pk=obj.incident.id)
             return True
@@ -171,29 +171,6 @@ class BusinessLineSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "name", "path", "depth", "numchild"]
 
 
-class ValueChoiceField(serializers.ChoiceField):
-    """Custom ChoiceField serializer field."""
-
-    def __init__(self, choices, **kwargs):
-        """init."""
-        self._savedchoices = OrderedDict(choices)
-        super(ValueChoiceField, self).__init__(choices=choices, **kwargs)
-        self._set_choices([(v, v) for v in self._savedchoices.values()])
-
-    def to_representation(self, obj):
-        """Used while retrieving value for the field."""
-        return self._savedchoices[obj]
-
-    def to_internal_value(self, data):
-        """Used while storing value for the field."""
-        for i in self._savedchoices:
-            if self._savedchoices[i] == data or i == data:
-                return i
-        raise serializers.ValidationError(
-            "Acceptable values are {0}.".format(list(self._savedchoices.values()))
-        )
-
-
 class IncidentSerializer(serializers.ModelSerializer):
     detection = serializers.SlugRelatedField(
         many=False,
@@ -236,7 +213,11 @@ class IncidentSerializer(serializers.ModelSerializer):
         queryset=BusinessLine.objects.all(),
         required=False,
     )
-    confidentiality = ValueChoiceField(choices=CONFIDENTIALITY_LEVEL, required=True)
+    tlp = serializers.SlugRelatedField(
+        slug_field="name",
+        queryset=Tlp.objects.all(),
+        required=True,
+    )
     opened_by = serializers.SlugRelatedField(
         many=False, read_only=True, slug_field="username"
     )
@@ -294,7 +275,6 @@ class IncidentSerializer(serializers.ModelSerializer):
 
     def to_representation(self, value):
         to_remove = [f for f in self.fields if f.endswith("_set")]
-        to_remove.extend(["artifacts"])
 
         # Remove some fields unless we are getting details of a specific incident
         if not self.is_retrieve():
@@ -315,10 +295,18 @@ class IncidentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         field_to_create = {}
         for f in self._additional_fields:
-            field_data = validated_data.pop(f, {})
-            if f.endswith("_set") or f == "artifacts":
+            if f.endswith("_set"):
                 # OneToMany creation is not supported
                 continue
+
+            field = self.fields.get(f)
+            is_required = bool(field and field.required and not field.read_only)
+            if f not in validated_data:
+                if is_required and not self.partial:
+                    raise serializers.ValidationError({f: "This field is required."})
+                continue
+
+            field_data = validated_data.pop(f)
             field_serializer = deepcopy(self._additional_fields[f])
             field_to_create[field_serializer] = field_data
 
@@ -333,10 +321,18 @@ class IncidentSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         for f in self._additional_fields:
-            field_data = validated_data.pop(f, {})
-            if f.endswith("_set") or f == "artifacts":
+            if f.endswith("_set"):
                 # OneToMany update is not supported
                 continue
+
+            field = self.fields.get(f)
+            is_required = bool(field and field.required and not field.read_only)
+            if f not in validated_data:
+                if is_required and not self.partial:
+                    raise serializers.ValidationError({f: "This field is required."})
+                continue
+
+            field_data = validated_data.pop(f)
             field_serializer = deepcopy(self._additional_fields[f])
             setattr(field_serializer, "initial_data", field_data)
             if field_serializer.is_valid(raise_exception=True):
@@ -348,7 +344,7 @@ class IncidentSerializer(serializers.ModelSerializer):
     def get_can_edit(self, obj):
         try:
             has_permission = Incident.authorization.for_user(
-                self._context["request"].user,
+                self.context["request"].user,
                 ["incidents.report_events", "incidents.handle_incidents"],
             ).get(pk=obj.id)
             return True
@@ -379,8 +375,6 @@ class BaselCategoryField(serializers.SlugRelatedField):
                     category_number=category.strip(), name=name.strip()
                 )
             except (MultipleObjectsReturned, ObjectDoesNotExist):
-                print("Unable to create", flush=True)
-                print(category.strip(), flush=True)
                 pass
         return super().to_internal_value(data)
 
@@ -404,6 +398,13 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = IncidentCategory
         fields = ["id", "name", "is_major", "bale_subcategory"]
+        read_only_fields = ["id"]
+
+
+class TlpSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tlp
+        fields = ["id", "name"]
         read_only_fields = ["id"]
 
 

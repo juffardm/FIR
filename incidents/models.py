@@ -9,23 +9,16 @@ from django.core.exceptions import ValidationError
 from django.dispatch import Signal, receiver
 from django.db import models
 from django.contrib.auth.models import User
+from django.contrib.contenttypes.fields import GenericRelation
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 
 from treebeard.mp_tree import MP_Node
+from crum import get_current_user
 
 from fir_artifacts import artifacts
-from fir_artifacts.models import Artifact, File
-from fir_plugins.models import link_to
+from fir_artifacts.models import Artifact
 from incidents.authorization import tree_authorization, AuthorizationModelMixin
-
-
-CONFIDENTIALITY_LEVEL = (
-    (0, "C0"),
-    (1, "C1"),
-    (2, "C2"),
-    (3, "C3"),
-)
 
 LIGHT_MODE_CHOICES = (("light", "light"), ("dark", "dark"))
 
@@ -86,14 +79,14 @@ class Log(models.Model):
     inst_type = None
 
     def __str__(self):
-        if self.inst_type == Incident:
+        if self.inst_type == Incident or self.incident is not None:
             incident_id = self.incident.id
             if getattr(settings, "INCIDENT_SHOW_ID", False):
                 incident_id = getattr(settings, "INCIDENT_ID_PREFIX", "") + str(
                     self.incident.id
                 )
             return "[%s] %s: %s (%s)" % (self.when, self.what, incident_id, self.who)
-        elif self.inst_type == Comments:
+        elif self.inst_type == Comments or self.comment is not None:
             incident_id = self.comment.incident.id
             if getattr(settings, "INCIDENT_SHOW_ID", False):
                 incident_id = getattr(settings, "INCIDENT_ID_PREFIX", "") + str(
@@ -276,6 +269,10 @@ def get_initial_status():
     return IncidentStatus.objects.get(flag="initial")
 
 
+def get_initial_tlp():
+    return Tlp.objects.get(name="GREEN").pk
+
+
 @tree_authorization(
     fields=[
         "concerned_business_lines",
@@ -284,8 +281,6 @@ def get_initial_status():
     owner_field="opened_by",
     owner_permission=settings.INCIDENT_CREATOR_PERMISSION,
 )
-@link_to(File)
-@link_to(Artifact)
 class Incident(FIRModel, models.Model):
     date = models.DateTimeField(default=datetimenow, blank=True)
     is_starred = models.BooleanField(default=False)
@@ -331,7 +326,13 @@ class Incident(FIRModel, models.Model):
         blank=False,
     )
     opened_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    confidentiality = models.IntegerField(choices=CONFIDENTIALITY_LEVEL, default="1")
+    tlp = models.ForeignKey(
+        "Tlp",
+        null=False,
+        blank=False,
+        on_delete=models.SET_DEFAULT,
+        default=get_initial_tlp,
+    )
 
     def __str__(self):
         return self.subject
@@ -438,6 +439,9 @@ class Comments(models.Model):
                 incident=incident,
                 opened_by=user,
             )
+            model_status_changed.send(
+                sender=Incident, instance=incident, previous_status=old
+            )
 
 
 class Attribute(models.Model):
@@ -454,6 +458,13 @@ class ValidAttribute(models.Model):
     unit = models.CharField(max_length=50, null=True, blank=True)
     description = models.CharField(max_length=500, null=True, blank=True)
     categories = models.ManyToManyField(IncidentCategory)
+
+    def __str__(self):
+        return self.name
+
+
+class Tlp(models.Model):
+    name = models.CharField(max_length=50)
 
     def __str__(self):
         return self.name
@@ -554,7 +565,7 @@ def log_new_incident(sender, instance, created, **kwargs):
         action = "created"
     Log.log(
         f"{obj} {action}",
-        instance.opened_by,
+        get_current_user(),
         incident=instance,
         inst_type=type(instance),
     )
@@ -567,7 +578,7 @@ def log_delete_incident(sender, instance, *args, **kwargs):
         obj = "incident"
     Log.log(
         f"{obj} deleted",
-        instance.opened_by,
+        get_current_user(),
         incident=instance,
         inst_type=type(instance),
     )
@@ -580,7 +591,7 @@ def log_new_comment(sender, instance, created, **kwargs):
         action = "created"
     Log.log(
         f"Comment {instance.id} {action}",
-        instance.opened_by,
+        get_current_user(),
         comment=instance,
         inst_type=type(instance),
     )
@@ -590,7 +601,7 @@ def log_new_comment(sender, instance, created, **kwargs):
 def log_delete_comment(sender, instance, *args, **kwargs):
     Log.log(
         f"Comment {instance.id} deleted",
-        instance.opened_by,
+        get_current_user(),
         comment=instance,
         inst_type=type(instance),
     )

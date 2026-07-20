@@ -62,6 +62,7 @@ MIDDLEWARE = (
     "django.middleware.locale.LocaleMiddleware",
     "axes.middleware.AxesMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "crum.CurrentRequestUserMiddleware",
 )
 
 
@@ -100,7 +101,6 @@ INSTALLED_APPS = (
     "incidents",
     "fir_artifacts",
     "treebeard",
-    "fir_email",
     "colorfield",
     "fir_api",
     "axes",
@@ -155,6 +155,8 @@ CSRF_TRUSTED_ORIGINS = ["http://" + h for h in ALLOWED_HOSTS] + [
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
 if os.getenv("HTTPS", "False").lower() in ("true", "1", "t"):
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -198,6 +200,8 @@ USER_SELF_SERVICE = {
 # Put notification events you don't want in this tuple
 # Example: NOTIFICATIONS_DISABLED_EVENTS = ('event:created', 'incident:created')
 NOTIFICATIONS_DISABLED_EVENTS = ()
+
+NOTIFICATIONS_ENABLED_METHODS = ("email", "xmpp", "webhook")
 
 # Send 'incident:*' notification events for both Event and Incident if True
 NOTIFICATIONS_MERGE_INCIDENTS_AND_EVENTS = False

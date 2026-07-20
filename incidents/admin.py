@@ -1,4 +1,21 @@
-from incidents.models import *
+from incidents.models import (
+    Incident,
+    BusinessLine,
+    BaleCategory,
+    Comments,
+    LabelGroup,
+    Label,
+    IncidentCategory,
+    IncidentStatus,
+    Log,
+    Profile,
+    IncidentTemplate,
+    Attribute,
+    ValidAttribute,
+    SeverityChoice,
+    Tlp,
+    AccessControlEntry,
+)
 from incidents.forms import IncidentStatusAdminForm
 from django.contrib import admin
 from django.contrib.auth import admin as auth_admin, get_user_model
@@ -39,6 +56,25 @@ class IncidentStatusAdmin(admin.ModelAdmin):
     form = IncidentStatusAdminForm
 
 
+class LogAdmin(admin.ModelAdmin):
+    list_display = (
+        "__str__",
+        "incident",
+        "comment",
+        "who",
+        "what",
+        "when",
+    )
+    search_fields = (
+        "incident__id",
+        "incident__subject",
+        "comment__id",
+        "who__username",
+        "when",
+        "what",
+    )
+
+
 admin.site.register(Incident, IncidentAdmin)
 admin.site.register(BusinessLine, BusinessLineAdmin)
 admin.site.register(BaleCategory)
@@ -47,11 +83,12 @@ admin.site.register(LabelGroup)
 admin.site.register(Label)
 admin.site.register(IncidentCategory)
 admin.site.register(IncidentStatus, IncidentStatusAdmin)
-admin.site.register(Log)
+admin.site.register(Log, LogAdmin)
 admin.site.register(Profile)
 admin.site.register(IncidentTemplate)
 admin.site.register(Attribute)
 admin.site.register(ValidAttribute)
 admin.site.register(SeverityChoice)
+admin.site.register(Tlp)
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)

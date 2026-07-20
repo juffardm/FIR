@@ -3,42 +3,20 @@
 $(document).keypress(function(e){
 
 	if (e.keyCode == 14 && e.ctrlKey) { // Ctrl + n
-		console.log('(nuggets) Ctrl + n')
 		$("#add-nugget").click()
 	}
 
 	if (e.keyCode == 13 && e.ctrlKey) { // Ctrl + ENTER
-		console.log('(nuggets) Ctrl + ENTER')
 		$("#submit-nugget").click();
 		$("#submit-nugget").remove();
 	}
 
 	if (e.keyCode == 5 && e.ctrlKey) {
-		console.log('(nuggets) Ctrl + E')
 		$("#nuggets tr:hover .edit-nugget-row a").click()
 	}
 
 });
 
-
-// helper function for getting cookie value
-
-function getCookie(name) {
-    var cookieValue = null;
-    if (document.cookie && document.cookie != '') {
-        var cookies = document.cookie.split(';');
-        for (var i = 0; i < cookies.length; i++) {
-            var cookie = jQuery.trim(cookies[i]);
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) == (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-
-    return cookieValue;
-}
 
 /* Button functions */
 
@@ -66,14 +44,38 @@ $(function() {
 })
 
 function ajax_action(elt, callback) {
+        const csrftoken = document.querySelector("[name=csrfmiddlewaretoken]");
 
 	$.ajax({
 		url: elt.data('url'),
-		headers: {'X-CSRFToken': getCookie('csrftoken')},
+		headers: {'X-CSRFToken': csrftoken},
 	}).success(function(data) {
 		callback(data);
 	});
 }
+
+function get_local_datetime_value() {
+	var date = new Date();
+	return new Date(date.getTime() - new Date().getTimezoneOffset() * 60 * 1000)
+		.toISOString()
+		.slice(0, 16);
+}
+
+function set_default_nugget_dates() {
+	var localDate = get_local_datetime_value();
+	var nuggetForm = document.getElementById("nugget_form");
+	var dateField = nuggetForm.querySelector("#id_date");
+
+	if (dateField && !dateField.value) {
+		dateField.value = localDate;
+	}
+	var startTimestampField = nuggetForm.querySelector("#id_start_timestamp");
+
+	if (startTimestampField && !startTimestampField.value) {
+		startTimestampField.value = localDate;
+	}
+}
+
 
 function delete_nugget (data) {
 	$("#nugget_"+data).remove();
@@ -90,18 +92,20 @@ function delete_nugget (data) {
 function edit_nugget(data) {
 	$("#nugget_modals").empty();
 	$("#nugget_modals").html(data);
+	set_default_nugget_dates();
 	$("#addNugget").modal('show');
 	$("#id_source").focus();
 }
 
 function submit_nugget () {
 	data = $("#nugget_form").serialize()
+        const csrftoken = document.querySelector("[name=csrfmiddlewaretoken]");
 
 	$.ajax({
 		type: 'POST',
 		url: $("#nugget_form").attr('action'),
 		data: data,
-		headers: {'X-CSRFToken': getCookie('csrftoken')},
+		headers: {'X-CSRFToken': csrftoken},
 		success: function (msg) {
 
 			if (msg.status == 'success') {

@@ -2,7 +2,7 @@
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
 
-from incidents.models import Incident, Comments, model_status_changed
+from incidents.models import Incident, Comments
 from incidents.models import Label, Log, IncidentStatus
 from incidents.models import Attribute, IncidentTemplate, Profile
 from incidents.forms import IncidentForm, CommentForm
@@ -29,8 +29,6 @@ from django.conf import settings
 from django.contrib import messages
 
 import copy
-
-from fir_artifacts import artifacts as libartifacts
 
 APP_HOOKS = {}
 
@@ -61,13 +59,6 @@ def is_incident_viewer(user):
     return user.has_perm("incidents.view_incidents", obj=Incident) or user.has_perm(
         "incidents.report_events", obj=Incident
     )
-
-
-comment_permissions = [
-    "incidents.handle_incidents",
-]
-if getattr(settings, "INCIDENT_VIEWER_CAN_COMMENT", False):
-    comment_permissions.append("incidents.view_incidents")
 
 
 # login / logout =================================================
@@ -158,7 +149,7 @@ def followup(request, incident_id, authorization_target=None):
         {
             "incident": i,
             "comments": comments,
-            "incident_show_id": settings.INCIDENT_SHOW_ID,
+            "incident_show_id": getattr(settings, "INCIDENT_SHOW_ID", False),
         },
     )
 
@@ -193,14 +184,6 @@ def details(request, incident_id, authorization_target=None):
     else:
         i = authorization_target
     form = CommentForm()
-    if not request.user.has_perm("incidents.handle_incidents", obj=i):
-        form.fields["action"].queryset = Label.objects.filter(
-            group__name="action"
-        ).exclude(name__in=["Closed", "Opened", "Blocked"])
-
-    artifacts, artifacts_count, correlated_count = libartifacts.all_for_object(
-        i, user=request.user
-    )
 
     valid_attributes = i.category.validattribute_set.all()
     attributes = i.attribute_set.all()
@@ -213,13 +196,10 @@ def details(request, incident_id, authorization_target=None):
         {
             "event": i,
             "comment_form": form,
-            "correlated_count": correlated_count,
-            "artifacts_count": artifacts_count,
-            "artifacts": artifacts,
             "attributes": attributes,
             "valid_attributes": valid_attributes,
             "comments": comments,
-            "incident_show_id": settings.INCIDENT_SHOW_ID,
+            "incident_show_id": getattr(settings, "INCIDENT_SHOW_ID", False),
             "status": IncidentStatus.objects.all(),
         },
     )
@@ -287,12 +267,6 @@ def edit_incident(request, incident_id, authorization_target=None):
                 previous_incident, form.cleaned_data, request.user
             )
             form.save()
-            if previous_incident.status != form.cleaned_data["status"]:
-                model_status_changed.send(
-                    sender=Incident,
-                    instance=i,
-                    previous_status=previous_incident.status,
-                )
             i.refresh_main_business_lines()
             i.is_starred = starred
             i.save()
@@ -306,26 +280,6 @@ def edit_incident(request, incident_id, authorization_target=None):
         form = IncidentForm(instance=i, for_user=request.user)
 
     return render(request, "events/new.html", {"i": i, "form": form, "mode": "edit"})
-
-
-@fir_auth_required
-@authorization_required("incidents.handle_incidents", Incident, view_arg="incident_id")
-def delete_incident(request, incident_id, authorization_target=None):
-    if request.method == "POST":
-        if authorization_target is None:
-            i = get_object_or_404(
-                Incident.authorization.for_user(
-                    request.user, "incidents.handle_incidents"
-                ),
-                pk=incident_id,
-            )
-        else:
-            i = authorization_target
-        msg = "Incident '%s' deleted." % i.subject
-        i.delete()
-        return HttpResponse(msg)
-    else:
-        return redirect("incidents:index")
 
 
 # events ====================================================================

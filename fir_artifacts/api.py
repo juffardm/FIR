@@ -2,6 +2,7 @@ from django.core.files import File as FileWrapper
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, viewsets, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
@@ -60,10 +61,27 @@ class ArtifactSerializer(serializers.ModelSerializer):
     Serializer for /api/artifacts
     """
 
+    incidents = serializers.SerializerMethodField()
+
+    def get_incidents(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return []
+
+        allowed_incidents = Incident.authorization.for_user(
+            request.user, "incidents.view_incidents"
+        )
+
+        return list(
+            obj.incidents.filter(
+                id__in=allowed_incidents.values_list("id", flat=True)
+            ).values_list("id", flat=True)
+        )
+
     class Meta:
         model = Artifact
-        fields = ("id", "type", "value", "incidents")
-        read_only_fields = ("id", "type", "value")
+        fields = ["id", "type", "value", "incidents"]
+        read_only_fields = ["id", "type", "value"]
 
 
 class IncidentArtifactSerializer(serializers.ModelSerializer):
@@ -167,6 +185,15 @@ class FileViewSet(
         ).data
         return Response(resp_data)
 
+    def perform_destroy(self, instance):
+        hashes = instance.get_hashes()
+        for h in hashes:
+            try:
+                a = Artifact.objects.get(value=hashes[h]).delete()
+            except Artifact.NotFound:
+                pass
+        super().perform_destroy(instance)
+
 
 class ArtifactViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSet):
     """
@@ -176,7 +203,7 @@ class ArtifactViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSe
     """
 
     serializer_class = ArtifactSerializer
-    permission_classes = [IsAuthenticated, CanViewIncident | CanWriteIncident]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ["id", "type", "value"]
     filterset_class = ArtifactFilter
@@ -191,14 +218,6 @@ class ArtifactViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSe
             .order_by("id")
         )
         return queryset
-
-    def retrieve(self, request, *args, **kwargs):
-        artifact = self.get_queryset().get(pk=self.kwargs.get("pk"))
-        correlations = artifact.relations_for_user(user=None).group()
-        if all([not link_type.objects.exists() for link_type in correlations.values()]):
-            raise PermissionError
-        serializer = self.get_serializer(artifact)
-        return Response(serializer.data)
 
     @action(detail=True, methods=["POST"], url_path=r"detach/(?P<incident_id>\d+)")
     def detach(self, request, pk, incident_id):
@@ -215,8 +234,8 @@ class ArtifactViewSet(ListModelMixin, RetrieveModelMixin, viewsets.GenericViewSe
         if not request.user.has_perm("incidents.handle_incidents", obj=related):
             raise PermissionDenied()
 
-        artifact.relations.remove(related)
-        if artifact.relations.count() == 0:
+        artifact.incidents.remove(related)
+        if artifact.incidents.count() == 0:
             artifact.delete()
 
         return Response({"detail": "Artifact detached"})

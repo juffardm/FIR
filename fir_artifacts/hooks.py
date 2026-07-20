@@ -6,10 +6,10 @@ from fir_artifacts.api import FileSerializer, IncidentArtifactSerializer
 hooks = {
     "incident_fields": [
         (
-            "artifacts",  # name of the new field
+            "artifact_set",  # name of the new field
             None,  # Django ModelForm.
             IncidentArtifactSerializer(many=True, read_only=True),  # Serializer
-            {"artifact": CharFilter(field_name="artifacts__value__iexact")},  # Filters
+            {"artifact": CharFilter(field_name="artifact_set__value")},  # Filters
         ),
         (
             "file_set",
@@ -18,5 +18,5 @@ hooks = {
             None,
         ),
     ],
-    "keyword_filter": {"artifact": lambda x: Q(artifacts__value__iexact=x)},
+    "keyword_filter": {"artifact": lambda x: Q(artifact_set__value__iexact=x)},
 }
