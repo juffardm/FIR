@@ -23,6 +23,7 @@ function misp_query_artifacts(observables, incident_id) {
     url: `/api/misp?${url_params}&incident_id=${incident_id}`,
     success: function(data) {
       $("#tab_misp").empty();
+      data["incident_id"] = incident_id;
       render_results(data);
     },
     error: function (data, status, error) {
