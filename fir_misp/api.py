@@ -91,7 +91,7 @@ class MISPViewSet(
     def list(self, request, *args, **kwargs):
         self.filter_queryset(self.get_queryset())
         observables = request.query_params.getlist("observable")
-        incident_id = request.query_params.get("fir_incident_id", "")
+        incident_id = request.query_params.get("incident_id", "")
 
         if not observables:
             raise APIException(
@@ -160,8 +160,12 @@ class MISPViewSet(
             incident_id = request.data.get("fir_incident_id", "")
 
             # Sanity Check
-            if not isinstance(incident_id, str) or not incident_id:
+            if not (isinstance(incident_id, str) or isinstance(incident_id, int)) or not incident_id:
                 raise ValueError("string expected for fir_incident_id")
+
+            # If we have only the incident id, we add a prefix to identify it's a fir id
+            if isinstance(incident_id, int):
+                incident_id = f"FIR-{incident_id}"            
 
             fir_title = f"{incident_id}".lower()
 
