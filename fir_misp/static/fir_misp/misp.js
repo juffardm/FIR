@@ -126,7 +126,7 @@ function misp_post_observables(observables, misp_events, row) {
     type: 'POST',
     headers: {'X-CSRFToken': $("[name=csrfmiddlewaretoken]").val()},
     contentType: "application/json",
-    data: JSON.stringify({"observables": observables, "misp_events": misp_events, "fid": $("#fid").data("fid")}),
+    data: JSON.stringify({"observables": observables, "misp_events": misp_events, "fir_incident_id": $("#fid").data("fid")}),
     success: function(data) {
       $('#waitingMessage').hide();
       query_misp();

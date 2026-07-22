@@ -30,7 +30,7 @@ class MISPSerializer(serializers.Serializer):
             {
                 "observables": [{"value": "example.com", "tags": ["malware"]}],
                 "misp_events": [{"value": "1234"}],
-                "fid": "FIR-1234",
+                "fir_incident_id": "1234",
             }
         ]
     )
@@ -91,7 +91,7 @@ class MISPViewSet(
     def list(self, request, *args, **kwargs):
         self.filter_queryset(self.get_queryset())
         observables = request.query_params.getlist("observable")
-        incident_id = request.query_params.get("incident_id", "")
+        incident_id = request.query_params.get("fir_incident_id", "")
 
         if not observables:
             raise APIException(
@@ -157,11 +157,11 @@ class MISPViewSet(
         try:
             observables = request.data.get("observables", [])
             misp_events = [x["value"] for x in request.data.get("misp_events", [])]
-            incident_id = request.data.get("fid", "")
+            incident_id = request.data.get("fir_incident_id", "")
 
             # Sanity Check
             if not isinstance(incident_id, str) or not incident_id:
-                raise ValueError("string expected for fid")
+                raise ValueError("string expected for fir_incident_id")
 
             fir_title = f"{incident_id}".lower()
 
