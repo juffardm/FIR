@@ -24,7 +24,7 @@
 <script id="misp-observables-template" type="text/x-handlebars-template">
   <div class="col-sm-12 widget order border-info-subtle misp-related-events">
     <div class="read">
-      <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% blocktrans %}MISP related events (with tag fir-${incident_id}){% endblocktrans %}</h4>
+      <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% blocktrans with event_id=event.id %}MISP related events (with tag fir-{{ event_id }}){% endblocktrans %}</h4>
       <table class="table table-condensed misp-read">
         <tbody class="known">
           ${#if related_events}
@@ -52,7 +52,7 @@
         <div class="send">
       <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% trans "Choose your MISP events to link to the observables" %}</h4>
       <div class="alert alert-warning mt-3" role="alert">
-      <i class="bi bi-exclamation-diamond"></i>{% blocktrans %}If no one is checked, a new MISP event will be created with the tags fir-incident and fir-${incident_id}.{% endblocktrans %}
+      <i class="bi bi-exclamation-diamond"></i>{% blocktrans with event_id=event.id %}If no one is checked, a new MISP event will be created with the tags fir-incident and fir-{{ event_id }}.{% endblocktrans %}
       </div>
       <table class="table table-condensed misp-send">
         <tbody class="known">
