@@ -2,6 +2,8 @@
 {% load i18n %}
 
 {% load fir_plugins %}
+{% load fir_misp %}
+{% load authorization %}
 
 <input type="hidden" name="inc_id_misp" value="{{ event.id }}"/>
 
@@ -24,7 +26,7 @@
 <script id="misp-observables-template" type="text/x-handlebars-template">
   <div class="col-sm-12 widget order border-info-subtle misp-related-events">
     <div class="read">
-      <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% blocktrans with event_id=event.id %}MISP related events (with tag fir-{{ event_id }}){% endblocktrans %}</h4>
+      <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% blocktrans with event_id=event.id|get_inc_id_with_prefix %}MISP related events (with tag {{ event_id }}){% endblocktrans %}</h4>
       <table class="table table-condensed misp-read">
         <tbody class="known">
           ${#if related_events}
@@ -52,7 +54,7 @@
         <div class="send">
       <h4 class="widget text-info-emphasis bg-info-subtle border border-info-subtle">{% trans "Choose your MISP events to link to the observables" %}</h4>
       <div class="alert alert-warning mt-3" role="alert">
-      <i class="bi bi-exclamation-diamond"></i>{% blocktrans with event_id=event.id %}If no one is checked, a new MISP event will be created with the tags fir-incident and fir-{{ event_id }}.{% endblocktrans %}
+      <i class="bi bi-exclamation-diamond"></i>{% blocktrans with event_id=event.id|get_inc_id_with_prefix %}If no one is checked, a new MISP event will be created with the tags fir-incident and {{ event_id }}.{% endblocktrans %}
       </div>
       <table class="table table-condensed misp-send">
         <tbody class="known">
@@ -196,10 +198,12 @@
         </tbody>
       </table>
       <button class="btn btn-outline-danger mt-2 me-2" id="send-to-misp" href="#" role="button">{% trans "Send it!" %} <span class="bi bi-cloud-upload" aria-hidden="true"></span></button>
-      {% blocktrans %}<strong>Note</strong>: Observables added this way will have the following context: {% endblocktrans %}<code id="fid" data-fid="{{ event|object_id }}">{{ event|object_id }}</code>
+      {% blocktrans %}<strong>Note</strong>: Observables added this way will have the following context: {% endblocktrans %}<code id="fid" data-fid="{{ event.id }}">{{ event.id|get_inc_id_with_prefix }}</code>
       <div id="waitingMessage" style="display: none;">{% trans "Please wait..." %}</div>
     </div>
-
-    <a class="btn btn-default btn-sm mb-2 mt-2" id="toggle-send" href="#" role="button">{% trans "Send to MISP..." %}</a>
+    {% has_perm "incidents.handle_incidents" obj=event as can_handle_incident %}
+    {% if can_handle_incident %}
+      <a class="btn btn-default btn-sm mb-2 mt-2" id="toggle-send" href="#" role="button">{% trans "Send to MISP..." %}</a>
+    {% endif %}
   </div>
 </script>

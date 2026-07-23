@@ -8,6 +8,7 @@ from rest_framework import viewsets, status, serializers, mixins
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import APIException
 from rest_framework.renderers import JSONRenderer
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from django_filters.rest_framework import CharFilter, FilterSet
 
@@ -17,23 +18,14 @@ from fir_api.filter_backends import DummyFilterBackend
 
 from fir_misp.models import MISPProfile
 from fir_misp.mispclient import MISPClient
+from fir_misp.serializers import MISPSerializer
+
+from incidents.models import Incident
 
 
 class MISPFilter(FilterSet):
     observable = CharFilter(label=_("observable"))
     incident_id = CharFilter(label=_("incident_id"))
-
-
-class MISPSerializer(serializers.Serializer):
-    observables = serializers.JSONField(
-        initial=[
-            {
-                "observables": [{"value": "example.com", "tags": ["malware"]}],
-                "misp_events": [{"value": "1234"}],
-                "fir_incident_id": "1234",
-            }
-        ]
-    )
 
 
 class MISPViewSet(
@@ -66,6 +58,15 @@ class MISPViewSet(
         py_misp = MISPClient(mp.endpoint, mp.api_key)
         mp.py_misp = py_misp
         return py_misp
+
+    def get_serializer(self, *args, **kwargs):
+        if "data" not in kwargs:
+            kwargs["instance"] = {
+                "observables": [{"value": "example.com", "tags": ["malware"]}],
+                "misp_events": [{"value": 1}],
+                "fir_incident_id": Incident.objects.all()[0],
+            }
+        return super().get_serializer(*args, **kwargs)
 
     def get_misp_related_events(self, user, tags_to_search):
         try:
@@ -100,13 +101,29 @@ class MISPViewSet(
                 )
             )
 
+        # We use he MISPSerializer validate function to check that :
+        # - If an incident_id is given, the user must have read rights on it
+        # - We also make sure the user has view rights on at least one fir incident related to the given observable
+        data = {
+            "observables": [{"value": obs, "tags": []} for obs in observables],
+            "misp_events": [],
+            "fir_incident_id": incident_id if incident_id else None,
+        }
+        serializer = self.get_serializer(data=data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except serializers.ValidationError:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             mp = self.get_mp(request.user)
             # We don't have the artifact type
             # So we search in all types. Can be very slow
             basic_tags = ["fir-incident"]
             if incident_id:
-                basic_tags.append(f"fir-{incident_id}")
+                inc_prefix = getattr(settings, "INCIDENT_ID_PREFIX", "FIR-") or "FIR-"
+                incident_id_with_prefix = f"{inc_prefix}{incident_id}"
+                basic_tags.append(incident_id_with_prefix.lower())
 
             results = {"known": [], "unknown": [], "basic_tags": basic_tags}
             for entry in observables:
@@ -151,27 +168,23 @@ class MISPViewSet(
             )
         return Response(results)
 
-    def create(self, request, *args, **kwargs):
-        mp = self.get_mp(request.user)
+    def perform_create(self, serializer):
+        mp = self.get_mp(self.request.user)
 
         try:
-            observables = request.data.get("observables", [])
-            misp_events = [x["value"] for x in request.data.get("misp_events", [])]
-            incident_id = request.data.get("fir_incident_id", "")
+            validated_data = serializer.validated_data
+            observables = validated_data["observables"]
+            misp_events = [x["value"] for x in validated_data["misp_events"]]
+            incident = validated_data["fir_incident_id"]
+            inc_prefix = getattr(settings, "INCIDENT_ID_PREFIX", "FIR-") or "FIR-"
 
-            # Sanity Check
-            if not (isinstance(incident_id, str) or isinstance(incident_id, int)) or not incident_id:
-                raise ValueError("string expected for fir_incident_id")
+            incident_id_with_prefix = f"{inc_prefix}{incident.id}"
 
-            # If we have only the incident id, we add a prefix to identify it's a fir id
-            if isinstance(incident_id, int):
-                incident_id = f"FIR-{incident_id}"            
-
-            fir_title = f"{incident_id}".lower()
+            fir_title = f"{incident.subject}".lower()
 
             for obs in observables:
                 misp_observables = []
-                tags_for_event = ["fir-incident", fir_title]
+                tags_for_event = ["fir-incident", incident_id_with_prefix.lower()]
 
                 if not isinstance(obs, dict):
                     raise ValueError("list of dict expected for observables")
@@ -190,14 +203,18 @@ class MISPViewSet(
 
                 # If not misp event was supplied: we create a new one
                 if not misp_events:
-                    misp_events = mp.create_event(f"Event from {fir_title}", tags=[])
+                    misp_events = mp.create_event(
+                        f"Event from {incident_id_with_prefix}", tags=[]
+                    )
                     # No tags: they will be added later
 
                 for event in misp_events:
                     # Add tags fir-incident & id if the event doesn't have them
                     mp.add_tags_to_event(event, list(set(tags_for_event)))
                     mp.add_attributes_to_event(
-                        misp_observables, event, comment=f"imported from {fir_title}"
+                        misp_observables,
+                        event,
+                        comment=f"imported from {incident_id_with_prefix} : {fir_title}",
                     )
         except (
             ValueError,
