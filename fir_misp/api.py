@@ -8,7 +8,6 @@ from rest_framework import viewsets, status, serializers, mixins
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import APIException
 from rest_framework.renderers import JSONRenderer
-from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from django_filters.rest_framework import CharFilter, FilterSet
 
