@@ -4,8 +4,8 @@ from fir_artifacts.models import Artifact
 
 
 class ObservableTagSerializer(serializers.Serializer):
-    value = serializers.CharField(initial="example.com")
-    tags = serializers.ListField(child=serializers.CharField(initial="malware"))
+    value = serializers.CharField()
+    tags = serializers.ListField(child=serializers.CharField())
 
 
 class MISPEventSerializer(serializers.Serializer):
@@ -15,7 +15,7 @@ class MISPEventSerializer(serializers.Serializer):
 class MISPSerializer(serializers.Serializer):
     observables = ObservableTagSerializer(many=True)
     misp_events = MISPEventSerializer(
-        many=True, allow_empty=True, initial=[{"value": 1}]
+        many=True, allow_empty=True
     )
     fir_incident_id = serializers.PrimaryKeyRelatedField(
         queryset=Incident.objects.all(), allow_null=True
